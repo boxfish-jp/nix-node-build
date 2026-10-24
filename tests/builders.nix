@@ -235,6 +235,11 @@ in
     grep -q "built with pnpm" ${pnpmApp}/dist/index.html
   '';
 
+  pnpm-output-excludes-volatile-install-state = outputCheck "pnpm-output-excludes-volatile-install-state" ''
+    test ! -e ${pnpmApp}/node_modules/.modules.yaml
+    test ! -e ${pnpmApp}/node_modules/.pnpm-workspace-state-v1.json
+  '';
+
   yarn-output = outputCheck "yarn-output" ''
     test -f ${yarnApp}/package.json
     test -d ${yarnApp}/node_modules/is-number

@@ -36,6 +36,13 @@ let
       pnpm.fetchDeps fetchArgs;
 
   configHook = if pkgs ? pnpmConfigHook then pkgs.pnpmConfigHook else pnpm.configHook;
+
+  pnpmVolatileFiles = [
+    "node_modules/.modules.yaml"
+    "node_modules/.pnpm-workspace-state-v1.json"
+  ];
+
+  extra' = removeAttrs extra [ "postFixup" ];
 in
 pkgs.stdenv.mkDerivation (
   sharedArgs
@@ -48,6 +55,10 @@ pkgs.stdenv.mkDerivation (
     ]
     ++ sharedArgs.nativeBuildInputs;
     buildPhase = mkBuildPhase "pnpm run" buildScript;
+    postFixup = ''
+      ${extra.postFixup or ""}
+      rm -f ${lib.concatMapStringsSep " " (file: "$out/${file}") pnpmVolatileFiles}
+    '';
   }
-  // extra
+  // extra'
 )
