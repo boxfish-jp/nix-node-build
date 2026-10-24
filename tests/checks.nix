@@ -19,6 +19,7 @@ in
     pkgs
     mkNodeApp
     mkNodeAppWithPkgs
+    mkNodeDeps
     hashes
     ;
 })

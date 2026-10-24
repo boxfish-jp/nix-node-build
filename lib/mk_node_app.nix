@@ -31,8 +31,13 @@ in
       packageManager ? null,
       pname ? "node-app",
       version ? "0.0.0",
+      meta ? { },
+      env ? { },
+      mainProgram ? null,
       nodejs ? pkgs.nodejs,
       pnpm ? pkgs.pnpm,
+      pnpmWorkspaces ? null,
+      pnpmInstallFlags ? null,
       yarn ? pkgs.yarn,
       buildScript ? "build",
       buildCommand ? null,
@@ -53,8 +58,13 @@ in
       manager = resolvePackageManager { inherit packageManager source; };
 
       npmDepsFetcherVersion = extraAttrs.npmDepsFetcherVersion or 1;
-      pnpmWorkspaces = extraAttrs.pnpmWorkspaces or [ ];
-      pnpmInstallFlags = extraAttrs.pnpmInstallFlags or [ ];
+
+      pnpmOptions = {
+        pnpmWorkspaces =
+          if pnpmWorkspaces != null then pnpmWorkspaces else extraAttrs.pnpmWorkspaces or [ ];
+        pnpmInstallFlags =
+          if pnpmInstallFlags != null then pnpmInstallFlags else extraAttrs.pnpmInstallFlags or [ ];
+      };
 
       dependencyCache =
         if deps != null then
@@ -77,10 +87,9 @@ in
               depsHash
               pnpm
               npmDepsFetcherVersion
-              pnpmWorkspaces
-              pnpmInstallFlags
               yarnBerryMissingHashes
               ;
+            inherit (pnpmOptions) pnpmWorkspaces pnpmInstallFlags;
             packageManager = manager;
           };
 
@@ -88,10 +97,22 @@ in
         "meta"
         "env"
         "passthru"
+        "pnpmWorkspaces"
+        "pnpmInstallFlags"
       ];
       extraMeta = extraAttrs.meta or { };
       extraEnv = extraAttrs.env or { };
       extraPassthru = extraAttrs.passthru or { };
+
+      resolvedMeta = {
+        description = "${pname} built with ${manager}";
+        platforms = nodejs.meta.platforms;
+      }
+      // extraMeta
+      // meta
+      // lib.optionalAttrs (mainProgram != null) { inherit mainProgram; };
+
+      resolvedEnv = extraEnv // env;
 
       commonBuilderArgs = {
         sharedArgs = {
@@ -108,12 +129,8 @@ in
           passthru = extraPassthru // {
             deps = dependencyCache;
           };
-          env = extraEnv;
-          meta = {
-            description = "${pname} built with ${manager}";
-            platforms = nodejs.meta.platforms;
-          }
-          // extraMeta;
+          env = resolvedEnv;
+          meta = resolvedMeta;
         };
         inherit
           buildScript
@@ -132,6 +149,8 @@ in
         };
         pnpm = commonBuilderArgs // {
           inherit pnpm;
+          # pnpmConfigHook passes an empty pnpmInstallFlags as one empty argument, which pnpm 11 rejects.
+          extra = extra // lib.filterAttrs (_: value: value != [ ]) pnpmOptions;
         };
         yarn = commonBuilderArgs // {
           inherit yarn;

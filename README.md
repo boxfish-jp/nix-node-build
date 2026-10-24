@@ -179,6 +179,57 @@ nix-node-build.lib.mkNodeApp {
 - `buildCommand = null` かつ `buildScript = null` のときはビルドコマンドを実行しません（`preBuild` / `postBuild` だけを実行することもできます）
 - `extraAttrs.buildPhase` を指定した場合は従来どおり `buildPhase` 全体を上書きします（`buildCommand` / `preBuild` / `postBuild` より優先されます）
 
+## meta / env / mainProgram
+
+`meta` / `env` / `mainProgram` はトップレベル引数で指定します。
+
+```nix
+nix-node-build.lib.mkNodeApp {
+  inherit pkgs src depsHash;
+
+  meta = {
+    description = "my CLI";
+    homepage = "https://example.com/my-cli";
+    license = pkgs.lib.licenses.mit;
+  };
+
+  env.NODE_ENV = "production";
+
+  mainProgram = "my-cli";
+}
+```
+
+- `meta` はデフォルトの `meta`（`description = "<pname> built with <manager>"`、`platforms = pkgs.nodejs.meta.platforms`）にマージされます。`meta.homepage` などを足しても `platforms` は残ります
+- `env` はビルド時の環境変数です。`extraAttrs.env` より優先されます
+- `mainProgram` は `meta.mainProgram` に設定されます。`meta.mainProgram` を直接書いた場合も `mainProgram` が優先されます（より具体的な指定として扱います）
+
+`nix run .#cli` を動かすには、`installPhase` で `$out/bin/<mainProgram>` に実行ファイルを置いてください。デフォルトの `installPhase` はツリー全体を `$out` にコピーするだけで、`$out/bin/<mainProgram>` は作りません。
+
+```nix
+mainProgram = "cli";
+installPhase = ''
+  runHook preInstall
+
+  mkdir -p $out/bin
+  cp dist/cli.js $out/bin/cli
+  chmod +x $out/bin/cli
+
+  runHook postInstall
+'';
+```
+
+## pnpm の workspace を指定する
+
+```nix
+pnpmWorkspaces = [ "packages/cli" ];
+pnpmInstallFlags = [ "--ignore-scripts" ];
+```
+
+- どちらも依存のフェッチとインストール（`pnpm install`）の両方に渡されます
+- 未指定（`null`）なら `extraAttrs.pnpmWorkspaces` / `extraAttrs.pnpmInstallFlags` にフォールバックし、それも無ければ `[ ]` です（実効的な既定値は `[ ]`）
+- `pnpmWorkspaces = [ ];` のように空のリストを明示すると、`extraAttrs` 側の値を無視して空にできます
+- `deps` を注入した場合は依存をフェッチしないため、フェッチには反映されません。フェッチに反映するには `mkNodeDeps` にも同じ値を渡してください
+
 ## オプション
 
 | 引数 | デフォルト | 説明 |
@@ -189,8 +240,13 @@ nix-node-build.lib.mkNodeApp {
 | `packageManager` | `null`（自動判定） | `"npm"` / `"pnpm"` / `"yarn"` / `"yarn-berry"` |
 | `pname` | `"node-app"` | パッケージ名 |
 | `version` | `"0.0.0"` | バージョン |
+| `meta` | `{ }` | デフォルトの `meta` にマージする属性（`description` / `platforms` など） |
+| `env` | `{ }` | ビルド時の環境変数。`extraAttrs.env` より優先される |
+| `mainProgram` | `null` | `meta.mainProgram` に設定する。指定時は `meta.mainProgram` より優先される |
 | `nodejs` | `pkgs.nodejs` | 使用する Node.js |
 | `pnpm` | `pkgs.pnpm` | pnpm を使う場合の pnpm パッケージ |
+| `pnpmWorkspaces` | `null`（実効 `[ ]`） | pnpm の workspace。フェッチとインストールの両方に渡る |
+| `pnpmInstallFlags` | `null`（実効 `[ ]`） | pnpm のインストールフラグ。フェッチとインストールの両方に渡る |
 | `yarn` | `pkgs.yarn` | yarn classic を使う場合の yarn パッケージ |
 | `buildScript` | `"build"` | 実行する npm script。`null` ならビルドスクリプトを実行しない。`buildCommand` を指定した場合は無視される |
 | `buildCommand` | `null` | ビルド工程で実行するシェル行。指定すると `buildScript` より優先される（パッケージマネージャの `run` は前置されない） |
@@ -200,11 +256,17 @@ nix-node-build.lib.mkNodeApp {
 | `nativeBuildInputs` | `[ ]` | ビルド時に追加する依存 |
 | `buildInputs` | `[ ]` | ビルド時に追加する依存 |
 | `yarnBerryMissingHashes` | `null` | Yarn Berry で `patch:` / `git:` 依存がある場合の `missing-hashes.json` |
-| `extraAttrs` | `{ }` | 最後に derivation へマージする属性（`meta` / `env` / `passthru` はマージされる） |
+| `extraAttrs` | `{ }` | 最後に derivation へマージする属性。`src` / `pname` / `version` / `buildPhase` などの予約属性も含めて上書きできる（`meta` / `env` / `passthru` は特別扱い） |
 
 `buildScript = null;` を指定するとビルドスクリプトを実行しません（依存のインストールだけ行う場合など）。`buildCommand` を指定した場合は、`buildScript` の値にかかわらず `buildCommand` が実行されます。
 
 `extraAttrs.pnpmDeps` のような依存キャッシュの直接指定も引き続き動きますが、`deps` を使う方が意図が明確です。
+
+### extraAttrs の上書き範囲
+
+`extraAttrs` は derivation へ最後にマージされます。そのため `src` / `pname` / `version` / `buildPhase` / `installPhase` などの予約属性も含めて、すべての属性を上書きできます。`meta` / `env` / `passthru` だけは特別扱いで、デフォルト値とトップレベル引数にマージされます（`meta` はデフォルト < `extraAttrs.meta` < トップレベル `meta`、`env` は `extraAttrs.env` < トップレベル `env`）。
+
+何でもできる反面、`pname` や `version` を意図せず上書きして事故りやすいので、通常はトップレベル引数で指定し、`extraAttrs` は最後の逃げ道として使ってください。
 
 ## 制約・注意点
 
@@ -212,7 +274,7 @@ nix-node-build.lib.mkNodeApp {
 - Yarn Berry は Yarn 4 のみ対応です（nixpkgs の `yarn-berry_4` / `yarn-berry_4-fetcher` を使用）。Yarn 3 のプロジェクトは未対応です。
 - pnpm は指定した nixpkgs の `pkgs.pnpm` を使います（26.05 では pnpm 11）。`package.json` の `packageManager` フィールド（例: `"packageManager": "pnpm@9.15.9"`）は無視されます。nixpkgs の `pnpmConfigHook` と `fetchPnpmDeps` が pnpm のバージョン自動切り替えを無効化しているため、ビルド中に指定バージョンの pnpm を取りに行って失敗することはありません（`tests/fixtures/pnpm` は pnpm 11 で pnpm 9.15.9 指定のプロジェクトをビルドする検証になっています）。特定の pnpm が必要な場合は `pnpm = pkgs.pnpm_XX;` を指定し、`depsHash` を取り直してください。なお、nixpkgs 26.05 では pnpm 10 が insecure 扱いのため、必要に応じて `permittedInsecurePackages` の設定が要ります。
 - `src` が derivation のときの自動判定は、評価時にそのソースをビルドして読みます（import from derivation）。`allow-import-from-derivation = false` では評価できないため、`packageManager` を明示してください。
-- ワークスペース（npm / pnpm / yarn workspaces）は未検証です。pnpm は `extraAttrs.pnpmWorkspaces` と `extraAttrs.pnpmInstallFlags` をフェッチとインストールの両方に渡します。
+- ワークスペース（npm / pnpm / yarn workspaces）は未検証です。pnpm は `pnpmWorkspaces` と `pnpmInstallFlags` をフェッチとインストールの両方に渡します（未指定なら `extraAttrs.pnpmWorkspaces` / `extraAttrs.pnpmInstallFlags` にフォールバックします）。
 - 依存キャッシュのフェッチ名は固定しています（npm: `node-deps`、pnpm: `node-deps-pnpm-deps`、yarn / Yarn Berry: `offline`）。この名前が変わると既存の依存キャッシュは一度だけ再ビルドになりますが、`depsHash` は内容ベースなので取り直す必要はありません。
 
 ## ライセンス

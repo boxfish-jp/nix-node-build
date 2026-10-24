@@ -2,6 +2,7 @@
   pkgs,
   mkNodeApp,
   mkNodeAppWithPkgs,
+  mkNodeDeps,
   hashes,
 }:
 let
@@ -181,6 +182,85 @@ let
     depsHash = hashes.npm;
     pname = "custom-app";
     version = "1.2.3";
+  };
+
+  topLevelEnvApp = mkNodeApp {
+    src = npmSource;
+    depsHash = hashes.npm;
+    env.TOP_LEVEL_MESSAGE = "from-top-level";
+    installPhase = ''
+      runHook preInstall
+
+      mkdir -p $out
+      printf '%s\n' "$TOP_LEVEL_MESSAGE" > $out/top-level-message
+
+      runHook postInstall
+    '';
+  };
+
+  topLevelMetaApp = mkNodeApp {
+    src = npmSource;
+    depsHash = hashes.npm;
+    meta = {
+      description = "description from top level";
+      homepage = "https://example.com/top-level-app";
+    };
+  };
+
+  mergedAttributesApp = mkNodeApp {
+    src = npmSource;
+    depsHash = hashes.npm;
+    meta.description = "description from top level";
+    env.MERGED_MESSAGE = "from-top-level";
+    extraAttrs = {
+      meta.description = "description from extraAttrs";
+      env.MERGED_MESSAGE = "from-extra-attrs";
+    };
+  };
+
+  mainProgramApp = mkNodeApp {
+    src = npmSource;
+    depsHash = hashes.npm;
+    mainProgram = "hello";
+    installPhase = ''
+      runHook preInstall
+
+      mkdir -p $out/bin
+      cp ${pkgs.hello}/bin/hello $out/bin/hello
+
+      runHook postInstall
+    '';
+  };
+
+  mainProgramPrecedenceApp = mkNodeApp {
+    src = npmSource;
+    depsHash = hashes.npm;
+    meta.mainProgram = "from-meta";
+    mainProgram = "hello";
+  };
+
+  pnpmOptionsApp = mkNodeApp {
+    src = pnpmSource;
+    depsHash = hashes.pnpm;
+    pnpmWorkspaces = [ "packages/app" ];
+    pnpmInstallFlags = [ "--prefer-offline" ];
+  };
+
+  pnpmOptionsDeps = mkNodeDeps {
+    src = pnpmSource;
+    depsHash = hashes.pnpm;
+    packageManager = "pnpm";
+    pnpmWorkspaces = [ "packages/app" ];
+    pnpmInstallFlags = [ "--prefer-offline" ];
+  };
+
+  pnpmExtraAttrsOptionsApp = mkNodeApp {
+    src = pnpmSource;
+    depsHash = hashes.pnpm;
+    extraAttrs = {
+      pnpmWorkspaces = [ "packages/app" ];
+      pnpmInstallFlags = [ "--prefer-offline" ];
+    };
   };
 
   explicitPnpmApp = mkNodeApp {
@@ -370,6 +450,51 @@ in
   pname-version = check "pname-version" (
     pnameVersionApp.name == "custom-app-1.2.3"
     && pnameVersionApp.meta.description == "custom-app built with npm"
+  );
+
+  top-level-env-output = outputCheck "top-level-env-output" ''
+    grep -qx "from-top-level" ${topLevelEnvApp}/top-level-message
+  '';
+
+  top-level-meta-attributes = check "top-level-meta-attributes" (
+    topLevelMetaApp.meta.description == "description from top level"
+    && topLevelMetaApp.meta.homepage == "https://example.com/top-level-app"
+    && topLevelMetaApp.meta.platforms == pkgs.nodejs.meta.platforms
+  );
+
+  top-level-meta-wins-over-extra-attrs = check "top-level-meta-wins-over-extra-attrs" (
+    mergedAttributesApp.meta.description == "description from top level"
+    && mergedAttributesApp.meta.platforms == pkgs.nodejs.meta.platforms
+  );
+
+  top-level-env-wins-over-extra-attrs = check "top-level-env-wins-over-extra-attrs" (
+    mergedAttributesApp.MERGED_MESSAGE == "from-top-level"
+  );
+
+  main-program-sets-meta-main-program-for-nix-run =
+    check "main-program-sets-meta-main-program-for-nix-run"
+      (mainProgramApp.meta.mainProgram == "hello");
+
+  main-program-wins-over-meta-main-program = check "main-program-wins-over-meta-main-program" (
+    mainProgramPrecedenceApp.meta.mainProgram == "hello"
+  );
+
+  main-program-out-bin-is-executable-for-nix-run = outputCheck "main-program-out-bin-is-executable-for-nix-run" ''
+    test -x ${mainProgramApp}/bin/hello
+    ${mainProgramApp}/bin/hello | grep -q "Hello, world!"
+  '';
+
+  pnpm-options-reach-fetch-and-install = check "pnpm-options-reach-fetch-and-install" (
+    pnpmOptionsApp.passthru.deps.drvPath == pnpmOptionsDeps.drvPath
+    && pnpmOptionsApp.passthru.deps.drvPath != pnpmApp.passthru.deps.drvPath
+    && pnpmOptionsApp.pnpmWorkspaces == [ "packages/app" ]
+    && pnpmOptionsApp.pnpmInstallFlags == [ "--prefer-offline" ]
+  );
+
+  pnpm-options-fall-back-to-extra-attrs = check "pnpm-options-fall-back-to-extra-attrs" (
+    pnpmExtraAttrsOptionsApp.passthru.deps.drvPath == pnpmOptionsDeps.drvPath
+    && pnpmExtraAttrsOptionsApp.pnpmWorkspaces == [ "packages/app" ]
+    && pnpmExtraAttrsOptionsApp.pnpmInstallFlags == [ "--prefer-offline" ]
   );
 
   default-deps-hash = check "default-deps-hash" (
