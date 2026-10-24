@@ -8,7 +8,15 @@ let
       pkgs.runCommand "check-${name}" { } "touch $out"
     else
       throw "check failed: ${name}";
+
+  outputCheck =
+    name: body:
+    pkgs.runCommand "check-${name}" { } ''
+      set -eu
+      ${body}
+      touch $out
+    '';
 in
 {
-  inherit check expectThrows;
+  inherit check expectThrows outputCheck;
 }

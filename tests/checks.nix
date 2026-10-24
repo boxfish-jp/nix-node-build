@@ -2,6 +2,8 @@
   pkgs,
   mkNodeApp,
   mkNodeAppWithPkgs,
+  mkNodeDeps,
+  mkNodeDepsWithPkgs,
 }:
 let
   hashes = {
@@ -22,3 +24,12 @@ in
 })
 // (import ./source.nix { inherit pkgs mkNodeApp; })
 // (import ./package_manager.nix { inherit pkgs; })
+// (import ./deps.nix {
+  inherit
+    pkgs
+    mkNodeApp
+    mkNodeDeps
+    mkNodeDepsWithPkgs
+    hashes
+    ;
+})

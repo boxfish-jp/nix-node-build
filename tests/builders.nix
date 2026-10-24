@@ -6,20 +6,12 @@
 }:
 let
   inherit (pkgs) lib;
-  inherit (import ./lib.nix { inherit pkgs; }) check;
+  inherit (import ./lib.nix { inherit pkgs; }) check outputCheck;
 
   npmSource = ./fixtures/npm;
   pnpmSource = ./fixtures/pnpm;
   yarnSource = ./fixtures/yarn;
   yarnBerrySource = ./fixtures/yarn-berry;
-
-  outputCheck =
-    name: body:
-    pkgs.runCommand "check-${name}" { } ''
-      set -eu
-      ${body}
-      touch $out
-    '';
 
   npmApp = mkNodeApp {
     src = npmSource;

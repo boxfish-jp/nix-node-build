@@ -1,9 +1,8 @@
 { pkgs }:
 {
   sharedArgs,
-  depsHash,
+  deps,
   nodejs,
-  src,
   buildScript,
   extra,
   yarnBerryMissingHashes,
@@ -13,10 +12,6 @@ let
 
   inherit (import ./build_phase.nix { inherit pkgs; }) mkBuildPhase;
 
-  fetcher =
-    pkgs."yarn-berry_4-fetcher"
-      or (throw "mkNodeApp: Yarn Berry support requires nixpkgs >= 26.05 (pkgs.yarn-berry_4-fetcher is missing). Use a newer nixpkgs, or switch the project to yarn classic.");
-
   optionalMissingHashes = lib.optionalAttrs (yarnBerryMissingHashes != null) {
     missingHashes = yarnBerryMissingHashes;
   };
@@ -24,17 +19,11 @@ in
 pkgs.stdenv.mkDerivation (
   sharedArgs
   // {
-    offlineCache = fetcher.fetchYarnBerryDeps (
-      {
-        inherit src;
-        hash = depsHash;
-      }
-      // optionalMissingHashes
-    );
+    offlineCache = deps;
     nativeBuildInputs = [
       nodejs
       pkgs."yarn-berry_4"
-      fetcher.yarnBerryConfigHook
+      pkgs."yarn-berry_4-fetcher".yarnBerryConfigHook
     ]
     ++ sharedArgs.nativeBuildInputs;
     buildPhase = mkBuildPhase "yarn run" buildScript;

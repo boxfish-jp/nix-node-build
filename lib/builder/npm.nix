@@ -1,8 +1,9 @@
 { pkgs }:
 {
   sharedArgs,
-  depsHash,
+  deps,
   nodejs,
+  npmDepsFetcherVersion,
   buildScript,
   extra,
 }:
@@ -12,8 +13,8 @@ in
 pkgs.buildNpmPackage (
   sharedArgs
   // {
-    inherit nodejs;
-    npmDepsHash = depsHash;
+    inherit nodejs npmDepsFetcherVersion;
+    npmDeps = deps;
     buildPhase = mkBuildPhase "npm run" buildScript;
   }
   // extra

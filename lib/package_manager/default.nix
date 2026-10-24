@@ -33,12 +33,16 @@ let
       null;
 
   resolvePackageManager =
-    { packageManager, source }:
+    {
+      packageManager,
+      source,
+      caller ? "mkNodeApp",
+    }:
     if packageManager != null then
       if builtins.elem packageManager supportedPackageManagers then
         packageManager
       else
-        throw "mkNodeApp: unsupported packageManager \"${packageManager}\". Supported values: ${lib.concatStringsSep ", " supportedPackageManagers}."
+        throw "${caller}: unsupported packageManager \"${packageManager}\". Supported values: ${lib.concatStringsSep ", " supportedPackageManagers}."
     else
       let
         detected = detectPackageManager source;
@@ -47,7 +51,7 @@ let
         detected
       else
         throw ''
-          mkNodeApp: cannot determine the package manager from src.
+          ${caller}: cannot determine the package manager from src.
           Expected one of pnpm-lock.yaml, yarn.lock, package-lock.json, or npm-shrinkwrap.json in the source root (.yarnrc.yml next to yarn.lock selects Yarn Berry).
           Set packageManager = "npm" | "pnpm" | "yarn" | "yarn-berry" explicitly to skip reading the source during evaluation.
         '';

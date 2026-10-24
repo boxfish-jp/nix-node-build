@@ -73,7 +73,7 @@ depsHash = nixpkgs.lib.fakeHash;
 ```console
 $ nix build
 ...
-error: hash mismatch in fixed-output derivation '...-npm-deps.drv':
+error: hash mismatch in fixed-output derivation '...-node-deps.drv':
          specified: sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
             got:    sha256-zsbwE7tVlaNIQatR0go555QPd8uX++6vVIdQ/pnNStA=
 ```
@@ -85,6 +85,46 @@ error: hash mismatch in fixed-output derivation '...-npm-deps.drv':
 - パッケージマネージャが違う（npm / pnpm / yarn でそれぞれ別のハッシュ）
 - ロックファイルが変わった
 - nixpkgs 側のフェッチャ実装が変わった（pnpm の `fetcherVersion` など）
+
+## モノレポで依存キャッシュを共有する
+
+同じ `src`（同じロックファイル）を複数のパッケージで使う場合、`mkNodeDeps` で依存キャッシュを1つだけ作り、`deps` で各アプリに注入できます。
+
+```nix
+outputs = { nixpkgs, nix-node-build, ... }:
+  let
+    systems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
+  in {
+    packages = nixpkgs.lib.genAttrs systems (system:
+      let
+        pkgs = nixpkgs.legacyPackages.${system};
+        src = ./.;
+        depsHash = "sha256-...";
+
+        deps = nix-node-build.lib.mkNodeDeps {
+          inherit pkgs src depsHash;
+          packageManager = "pnpm";
+        };
+
+        mkApp = pname: nix-node-build.lib.mkNodeApp {
+          inherit pkgs src deps pname;
+          version = "v1.0.18";
+        };
+      in {
+        cli = mkApp "cli";
+        hub = mkApp "hub";
+      });
+  };
+```
+
+- `mkNodeDeps` は `mkNodeApp` と同じく `src` からパッケージマネージャを判定します（`packageManager` で明示も可能）
+- `deps` を渡したアプリは依存をフェッチせず、その derivation をそのまま使います。`depsHash` は不要です（実際のハッシュを併用するとエラーになります。デフォルトの `lib.fakeHash` は無視されます）
+- `deps` を作ったときのパッケージマネージャとアプリのパッケージマネージャが違う場合もエラーになります
+- 実際に使った依存キャッシュは `passthru.deps` から取得できます
+
+`deps` を渡さなくても、同じ `src` と `depsHash` を使うアプリ同士では依存キャッシュが自動で共有されます（フェッチ名を固定しているため）。`deps` は、アプリごとに `depsHash` を二重管理したくない場合や、`mkNodeApp` を評価せずに依存キャッシュだけを取り出したい場合に使ってください。
+
+`lib.${system}.mkNodeDeps` も同じように使えます（`pkgs` は不要です）。
 
 ## 出力
 
@@ -115,6 +155,7 @@ installPhase = ''
 | --- | --- | --- |
 | `src` | （必須） | ソースのパスまたは derivation |
 | `depsHash` | `lib.fakeHash` | 依存キャッシュのハッシュ。未設定ならビルドが正しい値を教えてくれる |
+| `deps` | `null` | `mkNodeDeps` が返す依存キャッシュ。指定するとフェッチせずに注入する（`depsHash` とは併用しない） |
 | `packageManager` | `null`（自動判定） | `"npm"` / `"pnpm"` / `"yarn"` / `"yarn-berry"` |
 | `pname` | `"node-app"` | パッケージ名 |
 | `version` | `"0.0.0"` | バージョン |
@@ -126,9 +167,11 @@ installPhase = ''
 | `nativeBuildInputs` | `[ ]` | ビルド時に追加する依存 |
 | `buildInputs` | `[ ]` | ビルド時に追加する依存 |
 | `yarnBerryMissingHashes` | `null` | Yarn Berry で `patch:` / `git:` 依存がある場合の `missing-hashes.json` |
-| `extraAttrs` | `{ }` | 最後に derivation へマージする属性（`meta` / `env` はマージされる） |
+| `extraAttrs` | `{ }` | 最後に derivation へマージする属性（`meta` / `env` / `passthru` はマージされる） |
 
 `buildScript = null;` を指定するとビルドスクリプトを実行しません（依存のインストールだけ行う場合など）。
+
+`extraAttrs.pnpmDeps` のような依存キャッシュの直接指定も引き続き動きますが、`deps` を使う方が意図が明確です。
 
 ## 制約・注意点
 
@@ -137,6 +180,7 @@ installPhase = ''
 - pnpm は指定した nixpkgs の `pkgs.pnpm` を使います（26.05 では pnpm 11）。`package.json` の `packageManager` フィールド（例: `"packageManager": "pnpm@9.15.9"`）は無視されます。nixpkgs の `pnpmConfigHook` と `fetchPnpmDeps` が pnpm のバージョン自動切り替えを無効化しているため、ビルド中に指定バージョンの pnpm を取りに行って失敗することはありません（`tests/fixtures/pnpm` は pnpm 11 で pnpm 9.15.9 指定のプロジェクトをビルドする検証になっています）。特定の pnpm が必要な場合は `pnpm = pkgs.pnpm_XX;` を指定し、`depsHash` を取り直してください。なお、nixpkgs 26.05 では pnpm 10 が insecure 扱いのため、必要に応じて `permittedInsecurePackages` の設定が要ります。
 - `src` が derivation のときの自動判定は、評価時にそのソースをビルドして読みます（import from derivation）。`allow-import-from-derivation = false` では評価できないため、`packageManager` を明示してください。
 - ワークスペース（npm / pnpm / yarn workspaces）は未検証です。pnpm は `extraAttrs.pnpmWorkspaces` と `extraAttrs.pnpmInstallFlags` をフェッチとインストールの両方に渡します。
+- 依存キャッシュのフェッチ名は固定しています（npm: `node-deps`、pnpm: `node-deps-pnpm-deps`、yarn / Yarn Berry: `offline`）。この名前が変わると既存の依存キャッシュは一度だけ再ビルドになりますが、`depsHash` は内容ベースなので取り直す必要はありません。
 
 ## ライセンス
 

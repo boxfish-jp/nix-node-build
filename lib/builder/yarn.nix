@@ -1,10 +1,9 @@
 { pkgs }:
 {
   sharedArgs,
-  depsHash,
+  deps,
   nodejs,
   yarn,
-  src,
   buildScript,
   extra,
 }:
@@ -14,10 +13,7 @@ in
 pkgs.stdenv.mkDerivation (
   sharedArgs
   // {
-    yarnOfflineCache = pkgs.fetchYarnDeps {
-      inherit src;
-      hash = depsHash;
-    };
+    yarnOfflineCache = deps;
     nativeBuildInputs = [
       nodejs
       yarn
