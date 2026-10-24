@@ -136,3 +136,8 @@ installPhase = ''
 - Yarn Berry は Yarn 4 のみ対応です（nixpkgs の `yarn-berry_4` / `yarn-berry_4-fetcher` を使用）。Yarn 3 のプロジェクトは未対応です。
 - pnpm は指定した nixpkgs の `pkgs.pnpm` を使います（26.05 では pnpm 11）。`package.json` の `packageManager` フィールド（例: `"packageManager": "pnpm@9.15.9"`）は無視されます。nixpkgs の `pnpmConfigHook` と `fetchPnpmDeps` が pnpm のバージョン自動切り替えを無効化しているため、ビルド中に指定バージョンの pnpm を取りに行って失敗することはありません（`tests/fixtures/pnpm` は pnpm 11 で pnpm 9.15.9 指定のプロジェクトをビルドする検証になっています）。特定の pnpm が必要な場合は `pnpm = pkgs.pnpm_XX;` を指定し、`depsHash` を取り直してください。なお、nixpkgs 26.05 では pnpm 10 が insecure 扱いのため、必要に応じて `permittedInsecurePackages` の設定が要ります。
 - `src` が derivation のときの自動判定は、評価時にそのソースをビルドして読みます（import from derivation）。`allow-import-from-derivation = false` では評価できないため、`packageManager` を明示してください。
+- ワークスペース（npm / pnpm / yarn workspaces）は未検証です。pnpm は `extraAttrs.pnpmWorkspaces` と `extraAttrs.pnpmInstallFlags` をフェッチとインストールの両方に渡します。
+
+## ライセンス
+
+WTFPL（Do What The Fuck You Want To Public License）。詳細は [LICENSE](LICENSE) を参照してください。
