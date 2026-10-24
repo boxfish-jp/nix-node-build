@@ -48,7 +48,7 @@ let
       else
         throw ''
           mkNodeApp: cannot determine the package manager from src.
-          Expected one of pnpm-lock.yaml, yarn.lock, or package-lock.json in the source root.
+          Expected one of pnpm-lock.yaml, yarn.lock, package-lock.json, or npm-shrinkwrap.json in the source root (.yarnrc.yml next to yarn.lock selects Yarn Berry).
           Set packageManager = "npm" | "pnpm" | "yarn" | "yarn-berry" explicitly to skip reading the source during evaluation.
         '';
 in
