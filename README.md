@@ -177,7 +177,7 @@ extraAttrs.meta.mainProgram = "my-app";
 
 - nixpkgs 26.05 で動作確認しています。npm / yarn のフックは nixpkgs 25.05 以降を想定しています（25.05 向けの pnpm フォールバックは未検証）。
 - Yarn Berry は Yarn 4 のみ対応です（nixpkgs の `yarn-berry_4` / `yarn-berry_4-fetcher` を使用）。Yarn 3 のプロジェクトは未対応です。
-- pnpm は指定した nixpkgs の `pkgs.pnpm` を使います（26.05 では pnpm 11）。古いロックファイルを pnpm 10 で扱いたい場合は `pnpm = pkgs.pnpm_10;` を指定してください。nixpkgs 26.05 では pnpm 10 が insecure 扱いのため、必要に応じて `permittedInsecurePackages` の設定が要ります。
+- pnpm は指定した nixpkgs の `pkgs.pnpm` を使います（26.05 では pnpm 11）。`package.json` の `packageManager` フィールド（例: `"packageManager": "pnpm@9.15.9"`）は無視されます。nixpkgs の `pnpmConfigHook` と `fetchPnpmDeps` が pnpm のバージョン自動切り替えを無効化しているため、ビルド中に指定バージョンの pnpm を取りに行って失敗することはありません（`tests/fixtures/pnpm` は pnpm 11 で pnpm 9.15.9 指定のプロジェクトをビルドする検証になっています）。特定の pnpm が必要な場合は `pnpm = pkgs.pnpm_XX;` を指定し、`depsHash` を取り直してください。なお、nixpkgs 26.05 では pnpm 10 が insecure 扱いのため、必要に応じて `permittedInsecurePackages` の設定が要ります。
 - `depsHash` は nixpkgs のフェッチャ実装に依存するため、nixpkgs を更新したら取り直してください。
 - デフォルトの出力は `node_modules` を含むため大きくなります。`installPhase` で必要なファイルだけを入れるのを推奨します。
 - ワークスペース（npm / pnpm / yarn workspaces）は未検証です。pnpm は `extraAttrs.pnpmWorkspaces` と `extraAttrs.pnpmInstallFlags` をフェッチとインストールの両方に渡します。
