@@ -2,7 +2,6 @@
 let
   inherit (pkgs) lib;
 
-  inherit (import ./source { inherit pkgs; }) resolveSource;
   inherit (import ./package_manager { inherit pkgs; }) resolvePackageManager;
 
   builders = {
@@ -27,7 +26,6 @@ in
     {
       src,
       depsHash ? lib.fakeHash,
-      srcHash ? null,
       packageManager ? null,
       pname ? "node-app",
       version ? "0.0.0",
@@ -42,7 +40,11 @@ in
       extraAttrs ? { },
     }:
     let
-      source = resolveSource { inherit src srcHash; };
+      source =
+        if builtins.isPath src || lib.isDerivation src then
+          src
+        else
+          throw "mkNodeApp: src must be a path or a derivation.";
       manager = resolvePackageManager { inherit packageManager source; };
 
       extra = removeAttrs extraAttrs [

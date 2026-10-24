@@ -49,7 +49,7 @@ default = nix-node-build.lib.${system}.mkNodeApp {
 
 ## パッケージマネージャの決定
 
-`packageManager` を省略すると、`src` 直下のファイルから自動判定します（パスなら評価時にその場で読み、URL なら評価時にアーカイブを取得・展開して読みます）。
+`packageManager` を省略すると、`src` 直下のファイルから自動判定します。
 
 | `src` 直下のファイル | 使用するもの |
 | --- | --- |
@@ -60,7 +60,7 @@ default = nix-node-build.lib.${system}.mkNodeApp {
 
 明示したい場合は `packageManager = "npm" | "pnpm" | "yarn" | "yarn-berry"` を渡してください。
 
-`packageManager` を指定すると自動判定は行わず、URL の取得も評価時には走りません。評価をネットワーク非依存に保ちたい場合や、`allow-import-from-derivation = false` の環境では明示してください。
+`packageManager` を指定すると自動判定は行いません。`src` が derivation の場合、自動判定は評価時にそのソースをビルドして読むため（import from derivation）、`allow-import-from-derivation = false` の環境では `packageManager` を明示してください。
 
 ## ハッシュの取得
 
@@ -86,30 +86,6 @@ error: hash mismatch in fixed-output derivation '...-npm-deps.drv':
 - ロックファイルが変わった
 - nixpkgs 側のフェッチャ実装が変わった（pnpm の `fetcherVersion` など）
 
-## URL からソースを取得する
-
-`src` に `http(s)://` / `file://` のアーカイブ URL（tar.gz / zip）を渡すと、`srcHash` で固定して取得します。この場合だけ `srcHash` が必要です。
-
-```nix
-nix-node-build.lib.${system}.mkNodeApp {
-  src = "https://example.com/my-app-1.0.0.tar.gz";
-  srcHash = "sha256-...";
-  depsHash = "sha256-...";
-};
-```
-
-`packageManager` は省略できます（評価時にアーカイブを取得してロックファイルを見ます）。評価時に取得させたくない場合は `packageManager = "npm";` のように明示してください。
-
-`srcHash` の取得も同じ手順です。`srcHash = nixpkgs.lib.fakeHash;` で一度ビルドし、エラーに出る `got:` の値を貼り付けます（`fetchzip` のハッシュ = 展開後のツリーのハッシュ）。`packageManager` を省略している場合、ハッシュ不一致は評価時に検出されます。ハッシュ取得中は `packageManager` を明示するとビルド時まで遅らせられます。
-
-パスや derivation を渡す場合、ソースは Nix がストアパスとして固定する（flake input なら `flake.lock`）ため、`srcHash` は不要です。パスと一緒に `srcHash` を渡すとエラーになります。
-
-ローカルのアーカイブを使う場合は、パスを文字列に埋め込むとストア経由で読めます。
-
-```nix
-src = "file://${./my-app-1.0.0.tar.gz}";
-```
-
 ## 出力
 
 `$out` にはビルド後のプロジェクトツリー全体（ソース、`node_modules`、ビルド成果物）が入ります。
@@ -133,32 +109,12 @@ installPhase = ''
 '';
 ```
 
-CLI として `nix run` したい場合の例です。
-
-```nix
-installPhase = ''
-  runHook preInstall
-
-  mkdir -p $out/bin $out/lib/node-app
-  cp -r . $out/lib/node-app
-  makeWrapper ${pkgs.nodejs}/bin/node $out/bin/my-app \
-    --add-flags $out/lib/node-app/dist/main.js
-
-  runHook postInstall
-'';
-nativeBuildInputs = [ pkgs.makeWrapper ];
-extraAttrs.meta.mainProgram = "my-app";
-```
-
-`nodejs` オプションを変更した場合は、`makeWrapper` に渡す Node.js のパスも合わせてください。
-
 ## オプション
 
 | 引数 | デフォルト | 説明 |
 | --- | --- | --- |
-| `src` | （必須） | ソースのパス、derivation、または `http(s)://` / `file://` の URL 文字列 |
+| `src` | （必須） | ソースのパスまたは derivation |
 | `depsHash` | `lib.fakeHash` | 依存キャッシュのハッシュ。未設定ならビルドが正しい値を教えてくれる |
-| `srcHash` | `null` | URL のときのソースハッシュ。URL 以外では指定しない |
 | `packageManager` | `null`（自動判定） | `"npm"` / `"pnpm"` / `"yarn"` / `"yarn-berry"` |
 | `pname` | `"node-app"` | パッケージ名 |
 | `version` | `"0.0.0"` | バージョン |
@@ -167,7 +123,7 @@ extraAttrs.meta.mainProgram = "my-app";
 | `yarn` | `pkgs.yarn` | yarn classic を使う場合の yarn パッケージ |
 | `buildScript` | `"build"` | 実行する npm script。`null` ならビルドスクリプトを実行しない |
 | `installPhase` | ツリー全体を `$out` にコピー | インストール処理の差し替え |
-| `nativeBuildInputs` | `[ ]` | ビルド時に追加する依存（`makeWrapper` など） |
+| `nativeBuildInputs` | `[ ]` | ビルド時に追加する依存 |
 | `buildInputs` | `[ ]` | ビルド時に追加する依存 |
 | `yarnBerryMissingHashes` | `null` | Yarn Berry で `patch:` / `git:` 依存がある場合の `missing-hashes.json` |
 | `extraAttrs` | `{ }` | 最後に derivation へマージする属性（`meta` / `env` はマージされる） |
@@ -179,28 +135,4 @@ extraAttrs.meta.mainProgram = "my-app";
 - nixpkgs 26.05 で動作確認しています。npm / yarn のフックは nixpkgs 25.05 以降を想定しています（25.05 向けの pnpm フォールバックは未検証）。
 - Yarn Berry は Yarn 4 のみ対応です（nixpkgs の `yarn-berry_4` / `yarn-berry_4-fetcher` を使用）。Yarn 3 のプロジェクトは未対応です。
 - pnpm は指定した nixpkgs の `pkgs.pnpm` を使います（26.05 では pnpm 11）。`package.json` の `packageManager` フィールド（例: `"packageManager": "pnpm@9.15.9"`）は無視されます。nixpkgs の `pnpmConfigHook` と `fetchPnpmDeps` が pnpm のバージョン自動切り替えを無効化しているため、ビルド中に指定バージョンの pnpm を取りに行って失敗することはありません（`tests/fixtures/pnpm` は pnpm 11 で pnpm 9.15.9 指定のプロジェクトをビルドする検証になっています）。特定の pnpm が必要な場合は `pnpm = pkgs.pnpm_XX;` を指定し、`depsHash` を取り直してください。なお、nixpkgs 26.05 では pnpm 10 が insecure 扱いのため、必要に応じて `permittedInsecurePackages` の設定が要ります。
-- `depsHash` は nixpkgs のフェッチャ実装に依存するため、nixpkgs を更新したら取り直してください。
-- デフォルトの出力は `node_modules` を含むため大きくなります。`installPhase` で必要なファイルだけを入れるのを推奨します。
-- ワークスペース（npm / pnpm / yarn workspaces）は未検証です。pnpm は `extraAttrs.pnpmWorkspaces` と `extraAttrs.pnpmInstallFlags` をフェッチとインストールの両方に渡します。
-- `src` が URL のときの自動判定は、評価時にアーカイブを取得します（import from derivation）。`allow-import-from-derivation = false` では評価できないため、`packageManager` を明示してください。
-- `src = ./.` を渡すと、flake の仕様により git 管理下のファイルだけがビルドに含まれます。`node_modules` などは `.gitignore` に入れてください。
-
-## フォーマット
-
-```console
-$ nix fmt
-```
-
-`nixfmt-tree`（treefmt 経由の nixfmt）で `.nix` ファイルを整形します。CI などで差分を検出したい場合は次のように実行します。
-
-```console
-$ nix fmt -- --ci
-```
-
-## テスト
-
-```console
-$ nix flake check
-```
-
-npm / pnpm / yarn classic / Yarn Berry / URL ソース（4 マネージャ、自動判定を含む）/ `installPhase` 差し替え のビルドを実行します。テスト用のプロジェクトは `tests/fixtures` にあります。
+- `src` が derivation のときの自動判定は、評価時にそのソースをビルドして読みます（import from derivation）。`allow-import-from-derivation = false` では評価できないため、`packageManager` を明示してください。

@@ -4,7 +4,7 @@
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
 
   outputs =
-    { nixpkgs, ... }:
+    { self, nixpkgs, ... }:
     let
       systems = [
         "x86_64-linux"
@@ -30,8 +30,9 @@
       checks = forAllSystems (
         pkgs:
         import ./tests/checks.nix {
-          inherit pkgs mkNodeAppWithPkgs;
-          mkNodeApp = (libFor pkgs).mkNodeApp;
+          inherit pkgs;
+          mkNodeApp = self.lib.${pkgs.stdenv.hostPlatform.system}.mkNodeApp;
+          mkNodeAppWithPkgs = self.lib.mkNodeApp;
         }
       );
 
