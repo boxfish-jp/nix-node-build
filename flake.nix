@@ -13,25 +13,28 @@
         "aarch64-darwin"
       ];
 
+      forAllSystems = f: nixpkgs.lib.genAttrs systems (system: f (import nixpkgs { inherit system; }));
+
       libFor = pkgs: import ./lib/mk_node_app.nix { inherit pkgs; };
 
       mkNodeAppWithPkgs =
         { pkgs, ... }@args: (libFor pkgs).mkNodeApp (builtins.removeAttrs args [ "pkgs" ]);
 
-      perSystem = nixpkgs.lib.genAttrs systems (system: libFor nixpkgs.legacyPackages.${system});
+      perSystem = forAllSystems libFor;
     in
     {
       lib = perSystem // {
         mkNodeApp = mkNodeAppWithPkgs;
       };
 
-      checks = nixpkgs.lib.genAttrs systems (
-        system:
+      checks = forAllSystems (
+        pkgs:
         import ./tests/checks.nix {
-          pkgs = nixpkgs.legacyPackages.${system};
-          inherit mkNodeAppWithPkgs;
-          mkNodeApp = perSystem.${system}.mkNodeApp;
+          inherit pkgs mkNodeAppWithPkgs;
+          mkNodeApp = (libFor pkgs).mkNodeApp;
         }
       );
+
+      formatter = forAllSystems (pkgs: pkgs.nixfmt-tree);
     };
 }

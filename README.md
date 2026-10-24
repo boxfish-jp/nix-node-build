@@ -183,6 +183,18 @@ extraAttrs.meta.mainProgram = "my-app";
 - ワークスペース（npm / pnpm / yarn workspaces）は未検証です。pnpm は `extraAttrs.pnpmWorkspaces` と `extraAttrs.pnpmInstallFlags` をフェッチとインストールの両方に渡します。
 - `src = ./.` を渡すと、flake の仕様により git 管理下のファイルだけがビルドに含まれます。`node_modules` などは `.gitignore` に入れてください。
 
+## フォーマット
+
+```console
+$ nix fmt
+```
+
+`nixfmt-tree`（treefmt 経由の nixfmt）で `.nix` ファイルを整形します。CI などで差分を検出したい場合は次のように実行します。
+
+```console
+$ nix fmt -- --ci
+```
+
 ## テスト
 
 ```console
