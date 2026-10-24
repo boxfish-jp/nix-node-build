@@ -1,6 +1,6 @@
 # nix-node-build
 
-`src`（ソース）と `depsHash`（依存関係のハッシュ）を渡すだけで、そのリポジトリのロックファイルを見て npm / pnpm / yarn のどれでもビルドする Nix 関数です。flake の `lib` として提供するので、他のリポジトリから入力に追加して使えます。
+`src`（ソース）と `depsHash`（依存関係のハッシュ）を渡すだけで、そのリポジトリのロックファイルを見て npm / pnpm / yarn のどれでもビルドする Nix 関数です。
 
 - npm（`package-lock.json` / `npm-shrinkwrap.json`）
 - pnpm（`pnpm-lock.yaml`）
@@ -49,7 +49,7 @@ default = nix-node-build.lib.${system}.mkNodeApp {
 
 ## パッケージマネージャの決定
 
-`packageManager` を省略すると、`src` 直下のファイルから自動判定します。
+`packageManager` を省略すると、`src` 直下のファイルから自動判定します（パスなら評価時にその場で読み、URL なら評価時にアーカイブを取得・展開して読みます）。
 
 | `src` 直下のファイル | 使用するもの |
 | --- | --- |
@@ -60,7 +60,7 @@ default = nix-node-build.lib.${system}.mkNodeApp {
 
 明示したい場合は `packageManager = "npm" | "pnpm" | "yarn" | "yarn-berry"` を渡してください。
 
-`src` が URL のとき、またはまだストアにない derivation のときは自動判定できないため、`packageManager` の指定が必要です。
+`packageManager` を指定すると自動判定は行わず、URL の取得も評価時には走りません。評価をネットワーク非依存に保ちたい場合や、`allow-import-from-derivation = false` の環境では明示してください。
 
 ## ハッシュの取得
 
@@ -94,12 +94,13 @@ error: hash mismatch in fixed-output derivation '...-npm-deps.drv':
 nix-node-build.lib.${system}.mkNodeApp {
   src = "https://example.com/my-app-1.0.0.tar.gz";
   srcHash = "sha256-...";
-  packageManager = "npm";
   depsHash = "sha256-...";
 };
 ```
 
-`srcHash` の取得も同じ手順です。`srcHash = nixpkgs.lib.fakeHash;` で一度ビルドし、エラーに出る `got:` の値を貼り付けます（`fetchzip` のハッシュ = 展開後のツリーのハッシュ）。
+`packageManager` は省略できます（評価時にアーカイブを取得してロックファイルを見ます）。評価時に取得させたくない場合は `packageManager = "npm";` のように明示してください。
+
+`srcHash` の取得も同じ手順です。`srcHash = nixpkgs.lib.fakeHash;` で一度ビルドし、エラーに出る `got:` の値を貼り付けます（`fetchzip` のハッシュ = 展開後のツリーのハッシュ）。`packageManager` を省略している場合、ハッシュ不一致は評価時に検出されます。ハッシュ取得中は `packageManager` を明示するとビルド時まで遅らせられます。
 
 パスや derivation を渡す場合、ソースは Nix がストアパスとして固定する（flake input なら `flake.lock`）ため、`srcHash` は不要です。パスと一緒に `srcHash` を渡すとエラーになります。
 
@@ -181,6 +182,7 @@ extraAttrs.meta.mainProgram = "my-app";
 - `depsHash` は nixpkgs のフェッチャ実装に依存するため、nixpkgs を更新したら取り直してください。
 - デフォルトの出力は `node_modules` を含むため大きくなります。`installPhase` で必要なファイルだけを入れるのを推奨します。
 - ワークスペース（npm / pnpm / yarn workspaces）は未検証です。pnpm は `extraAttrs.pnpmWorkspaces` と `extraAttrs.pnpmInstallFlags` をフェッチとインストールの両方に渡します。
+- `src` が URL のときの自動判定は、評価時にアーカイブを取得します（import from derivation）。`allow-import-from-derivation = false` では評価できないため、`packageManager` を明示してください。
 - `src = ./.` を渡すと、flake の仕様により git 管理下のファイルだけがビルドに含まれます。`node_modules` などは `.gitignore` に入れてください。
 
 ## フォーマット
@@ -201,4 +203,4 @@ $ nix fmt -- --ci
 $ nix flake check
 ```
 
-npm / pnpm / yarn classic / Yarn Berry / URL ソース / `installPhase` 差し替え のビルドを実行します。テスト用のプロジェクトは `tests/fixtures` にあります。
+npm / pnpm / yarn classic / Yarn Berry / URL ソース（4 マネージャ、自動判定を含む）/ `installPhase` 差し替え のビルドを実行します。テスト用のプロジェクトは `tests/fixtures` にあります。
