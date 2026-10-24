@@ -5,6 +5,9 @@
   nodejs,
   npmDepsFetcherVersion,
   buildScript,
+  buildCommand,
+  preBuild,
+  postBuild,
   extra,
 }:
 let
@@ -15,7 +18,15 @@ pkgs.buildNpmPackage (
   // {
     inherit nodejs npmDepsFetcherVersion;
     npmDeps = deps;
-    buildPhase = mkBuildPhase "npm run" buildScript;
+    buildPhase = mkBuildPhase {
+      command = "npm run";
+      inherit
+        buildScript
+        buildCommand
+        preBuild
+        postBuild
+        ;
+    };
   }
   // extra
 )

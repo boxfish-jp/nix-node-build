@@ -35,6 +35,9 @@ in
       pnpm ? pkgs.pnpm,
       yarn ? pkgs.yarn,
       buildScript ? "build",
+      buildCommand ? null,
+      preBuild ? "",
+      postBuild ? "",
       installPhase ? null,
       nativeBuildInputs ? [ ],
       buildInputs ? [ ],
@@ -114,6 +117,9 @@ in
         };
         inherit
           buildScript
+          buildCommand
+          preBuild
+          postBuild
           extra
           nodejs
           ;

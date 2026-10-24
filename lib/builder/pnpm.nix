@@ -5,6 +5,9 @@
   pnpm,
   nodejs,
   buildScript,
+  buildCommand,
+  preBuild,
+  postBuild,
   extra,
 }:
 let
@@ -31,7 +34,15 @@ pkgs.stdenv.mkDerivation (
       configHook
     ]
     ++ sharedArgs.nativeBuildInputs;
-    buildPhase = mkBuildPhase "pnpm run" buildScript;
+    buildPhase = mkBuildPhase {
+      command = "pnpm run";
+      inherit
+        buildScript
+        buildCommand
+        preBuild
+        postBuild
+        ;
+    };
     postFixup = ''
       ${extra.postFixup or ""}
       rm -f ${lib.concatMapStringsSep " " (file: "$out/${file}") pnpmVolatileFiles}

@@ -4,18 +4,29 @@ let
 in
 {
   mkBuildPhase =
-    command: script:
-    if script == null then
-      ''
-        runHook preBuild
-        runHook postBuild
-      ''
-    else
-      ''
-        runHook preBuild
+    {
+      command,
+      buildScript,
+      buildCommand,
+      preBuild,
+      postBuild,
+    }:
+    let
+      buildLine =
+        if buildCommand != null then
+          buildCommand
+        else if buildScript == null then
+          null
+        else
+          "${command} ${lib.escapeShellArg buildScript}";
 
-        ${command} ${lib.escapeShellArg script}
-
-        runHook postBuild
-      '';
+      sections = [
+        "runHook preBuild"
+      ]
+      ++ lib.optional (preBuild != "") preBuild
+      ++ lib.optional (buildLine != null) buildLine
+      ++ lib.optional (postBuild != "") postBuild
+      ++ [ "runHook postBuild" ];
+    in
+    lib.concatStringsSep "\n\n" sections + "\n";
 }

@@ -149,6 +149,36 @@ installPhase = ''
 '';
 ```
 
+## ビルド工程を差し替える
+
+`buildScript` は `package.json` のスクリプト名しか受け取れません。引数付きのコマンドを実行したい場合や、ビルドの前後に処理を挟みたい場合は `buildCommand` / `preBuild` / `postBuild` を使います。
+
+```nix
+nix-node-build.lib.mkNodeApp {
+  inherit pkgs src depsHash;
+
+  preBuild = ''
+    for sqliteDir in node_modules/.pnpm/better-sqlite3@*/node_modules/better-sqlite3; do
+      (cd "$sqliteDir" && node-gyp rebuild --release --nodedir=${pkgs.nodejs})
+    done
+  '';
+
+  buildCommand = "turbo build --filter=cli";
+
+  postBuild = ''
+    rm -rf .turbo
+  '';
+}
+```
+
+実行順は `runHook preBuild` → `preBuild` → ビルド → `postBuild` → `runHook postBuild` です。
+
+- `buildCommand` はシェル行としてそのまま実行されます。`npm run` などの前置は付かないので、`turbo build --filter=cli` のような引数付きコマンドや、`&&`・パイプ・リダイレクトを含む行をそのまま書けます
+- `buildCommand` を指定すると `buildScript` は無視されます（`buildScript` のデフォルトは `"build"` なので、両方を指定してもエラーにはなりません）
+- `preBuild` は依存のインストール後に実行されるため、`node_modules` の中のネイティブモジュールを直接再ビルドできます
+- `buildCommand = null` かつ `buildScript = null` のときはビルドコマンドを実行しません（`preBuild` / `postBuild` だけを実行することもできます）
+- `extraAttrs.buildPhase` を指定した場合は従来どおり `buildPhase` 全体を上書きします（`buildCommand` / `preBuild` / `postBuild` より優先されます）
+
 ## オプション
 
 | 引数 | デフォルト | 説明 |
@@ -162,14 +192,17 @@ installPhase = ''
 | `nodejs` | `pkgs.nodejs` | 使用する Node.js |
 | `pnpm` | `pkgs.pnpm` | pnpm を使う場合の pnpm パッケージ |
 | `yarn` | `pkgs.yarn` | yarn classic を使う場合の yarn パッケージ |
-| `buildScript` | `"build"` | 実行する npm script。`null` ならビルドスクリプトを実行しない |
+| `buildScript` | `"build"` | 実行する npm script。`null` ならビルドスクリプトを実行しない。`buildCommand` を指定した場合は無視される |
+| `buildCommand` | `null` | ビルド工程で実行するシェル行。指定すると `buildScript` より優先される（パッケージマネージャの `run` は前置されない） |
+| `preBuild` | `""` | ビルドの直前に実行するシェル行 |
+| `postBuild` | `""` | ビルドの直後に実行するシェル行 |
 | `installPhase` | ツリー全体を `$out` にコピー | インストール処理の差し替え |
 | `nativeBuildInputs` | `[ ]` | ビルド時に追加する依存 |
 | `buildInputs` | `[ ]` | ビルド時に追加する依存 |
 | `yarnBerryMissingHashes` | `null` | Yarn Berry で `patch:` / `git:` 依存がある場合の `missing-hashes.json` |
 | `extraAttrs` | `{ }` | 最後に derivation へマージする属性（`meta` / `env` / `passthru` はマージされる） |
 
-`buildScript = null;` を指定するとビルドスクリプトを実行しません（依存のインストールだけ行う場合など）。
+`buildScript = null;` を指定するとビルドスクリプトを実行しません（依存のインストールだけ行う場合など）。`buildCommand` を指定した場合は、`buildScript` の値にかかわらず `buildCommand` が実行されます。
 
 `extraAttrs.pnpmDeps` のような依存キャッシュの直接指定も引き続き動きますが、`deps` を使う方が意図が明確です。
 

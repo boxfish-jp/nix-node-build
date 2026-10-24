@@ -4,6 +4,9 @@
   deps,
   nodejs,
   buildScript,
+  buildCommand,
+  preBuild,
+  postBuild,
   extra,
   yarnBerryMissingHashes,
 }:
@@ -26,7 +29,15 @@ pkgs.stdenv.mkDerivation (
       pkgs."yarn-berry_4-fetcher".yarnBerryConfigHook
     ]
     ++ sharedArgs.nativeBuildInputs;
-    buildPhase = mkBuildPhase "yarn run" buildScript;
+    buildPhase = mkBuildPhase {
+      command = "yarn run";
+      inherit
+        buildScript
+        buildCommand
+        preBuild
+        postBuild
+        ;
+    };
     env = {
       YARN_IGNORE_PATH = "1";
     }

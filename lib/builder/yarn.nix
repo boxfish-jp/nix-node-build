@@ -5,6 +5,9 @@
   nodejs,
   yarn,
   buildScript,
+  buildCommand,
+  preBuild,
+  postBuild,
   extra,
 }:
 let
@@ -20,7 +23,15 @@ pkgs.stdenv.mkDerivation (
       pkgs.yarnConfigHook
     ]
     ++ sharedArgs.nativeBuildInputs;
-    buildPhase = mkBuildPhase "yarn --offline run" buildScript;
+    buildPhase = mkBuildPhase {
+      command = "yarn --offline run";
+      inherit
+        buildScript
+        buildCommand
+        preBuild
+        postBuild
+        ;
+    };
   }
   // extra
 )

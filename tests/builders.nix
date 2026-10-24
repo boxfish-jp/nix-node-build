@@ -52,6 +52,54 @@ let
     buildScript = null;
   };
 
+  buildCommandApp = mkNodeApp {
+    src = npmSource;
+    depsHash = hashes.npm;
+    buildCommand = "node build_args.js --some-flag value";
+  };
+
+  buildCommandPrecedenceApp = mkNodeApp {
+    src = npmSource;
+    depsHash = hashes.npm;
+    buildCommand = "node build.js";
+    buildScript = "missing-script";
+  };
+
+  buildCommandWithNullBuildScriptApp = mkNodeApp {
+    src = npmSource;
+    depsHash = hashes.npm;
+    buildCommand = "node build.js";
+    buildScript = null;
+  };
+
+  buildPhaseOrderApp = mkNodeApp {
+    src = npmSource;
+    depsHash = hashes.npm;
+    preBuild = "printf 'preBuild\\n' >> build-order.log";
+    buildCommand = "printf 'build\\n' >> build-order.log";
+    postBuild = "printf 'postBuild\\n' >> build-order.log";
+  };
+
+  buildHooksApp = mkNodeApp {
+    src = npmSource;
+    depsHash = hashes.npm;
+    preBuild = "printf 'preBuild\\n' > prebuild-marker";
+    postBuild = "printf 'postBuild\\n' > postbuild-marker";
+  };
+
+  extraBuildPhaseApp = mkNodeApp {
+    src = npmSource;
+    depsHash = hashes.npm;
+    buildCommand = "node build_args.js --from-build-command";
+    extraAttrs.buildPhase = "mkdir -p dist && printf 'built with extraAttrs\\n' > dist/override.txt";
+  };
+
+  pnpmBuildCommandApp = mkNodeApp {
+    src = pnpmSource;
+    depsHash = hashes.pnpm;
+    buildCommand = "node build.js && printf 'built with buildCommand\\n' >> dist/index.html";
+  };
+
   derivedSource = pkgs.runCommand "npm-derivation-source" { } ''
     cp -r ${npmSource} $out
     chmod -R u+w $out
@@ -255,6 +303,38 @@ in
   build-script-null-output = outputCheck "build-script-null-output" ''
     test -d ${buildScriptNullApp}/node_modules/is-number
     test ! -e ${buildScriptNullApp}/dist
+  '';
+
+  build-command-output = outputCheck "build-command-output" ''
+    grep -qx -- "--some-flag value" ${buildCommandApp}/dist/args.txt
+  '';
+
+  build-command-precedence-output = outputCheck "build-command-precedence-output" ''
+    grep -q "built with npm" ${buildCommandPrecedenceApp}/dist/index.html
+  '';
+
+  build-command-with-null-build-script-output = outputCheck "build-command-with-null-build-script-output" ''
+    grep -q "built with npm" ${buildCommandWithNullBuildScriptApp}/dist/index.html
+  '';
+
+  build-phase-order-output = outputCheck "build-phase-order-output" ''
+    test "$(cat ${buildPhaseOrderApp}/build-order.log)" = "$(printf 'preBuild\nbuild\npostBuild')"
+  '';
+
+  build-hooks-output = outputCheck "build-hooks-output" ''
+    grep -qx preBuild ${buildHooksApp}/prebuild-marker
+    grep -qx postBuild ${buildHooksApp}/postbuild-marker
+    grep -q "built with npm" ${buildHooksApp}/dist/index.html
+  '';
+
+  extra-attrs-build-phase-output = outputCheck "extra-attrs-build-phase-output" ''
+    grep -qx "built with extraAttrs" ${extraBuildPhaseApp}/dist/override.txt
+    test ! -e ${extraBuildPhaseApp}/dist/args.txt
+  '';
+
+  pnpm-build-command-output = outputCheck "pnpm-build-command-output" ''
+    grep -q "built with pnpm" ${pnpmBuildCommandApp}/dist/index.html
+    grep -q "built with buildCommand" ${pnpmBuildCommandApp}/dist/index.html
   '';
 
   derivation-source-output = outputCheck "derivation-source-output" ''
