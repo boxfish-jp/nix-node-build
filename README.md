@@ -13,7 +13,7 @@
 {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
-    nix-node-build.url = "github:YOUR_NAME/nix-node-build";
+    nix-node-build.url = "github:boxfish-jp/nix-node-build";
   };
 
   outputs = { nixpkgs, nix-node-build, ... }:
