@@ -326,6 +326,71 @@ let
     depsHash = hashes.yarnBerryMissingHashes;
     yarnBerryMissingHashes = pkgs.writeText "missing-hashes.json" "{}";
   };
+
+  npmPruneDevApp = mkNodeApp {
+    src = npmSource;
+    depsHash = hashes.npm;
+    pruneDev = true;
+  };
+
+  pnpmPruneDevApp = mkNodeApp {
+    src = pnpmSource;
+    depsHash = hashes.pnpm;
+    pruneDev = true;
+  };
+
+  yarnPruneDevApp = mkNodeApp {
+    src = yarnSource;
+    depsHash = hashes.yarn;
+    pruneDev = true;
+  };
+
+  yarnBerryPruneDevApp = mkNodeApp {
+    src = yarnBerrySource;
+    depsHash = hashes.yarnBerry;
+    pruneDev = true;
+  };
+
+  npmOmitDevApp = mkNodeApp {
+    src = npmSource;
+    depsHash = hashes.npm;
+    extraAttrs.npmInstallFlags = [ "--omit=dev" ];
+  };
+
+  installHooksApp = mkNodeApp {
+    src = npmSource;
+    depsHash = hashes.npm;
+    preInstall = "printf 'preInstall\\n' > pre-install-marker";
+    postInstall = "printf 'postInstall\\n' > $out/post-install-marker";
+  };
+
+  installHooksPrecedenceApp = mkNodeApp {
+    src = npmSource;
+    depsHash = hashes.npm;
+    preInstall = "printf 'from-option\\n' > install-source";
+    extraAttrs.preInstall = "printf 'from-extra-attrs\\n' > install-source";
+  };
+
+  pruneDevAfterPreInstallApp = mkNodeApp {
+    src = npmSource;
+    depsHash = hashes.npm;
+    pruneDev = true;
+    preInstall = "test -d node_modules/is-odd";
+  };
+
+  pruneDevWithInstallPhaseApp = mkNodeApp {
+    src = npmSource;
+    depsHash = hashes.npm;
+    pruneDev = true;
+    installPhase = ''
+      runHook preInstall
+
+      mkdir -p $out
+      cp -a node_modules $out/node_modules
+
+      runHook postInstall
+    '';
+  };
 in
 {
   npm = npmApp;
@@ -526,5 +591,67 @@ in
 
   yarn-berry-missing-hashes-output = outputCheck "yarn-berry-missing-hashes-output" ''
     grep -q "built with yarn-berry" ${yarnBerryMissingHashesApp}/dist/index.html
+  '';
+
+  prune-dev-removes-dev-dependencies-from-npm-output = outputCheck "prune-dev-removes-dev-dependencies-from-npm-output" ''
+    test -d ${npmApp}/node_modules/is-odd
+    test ! -e ${npmPruneDevApp}/node_modules/is-odd
+    test -d ${npmPruneDevApp}/node_modules/is-number
+    grep -q "built with npm" ${npmPruneDevApp}/dist/index.html
+  '';
+
+  prune-dev-removes-dev-dependencies-from-pnpm-output = outputCheck "prune-dev-removes-dev-dependencies-from-pnpm-output" ''
+    test -d ${pnpmApp}/node_modules/is-odd
+    test ! -e ${pnpmPruneDevApp}/node_modules/is-odd
+    test -d ${pnpmPruneDevApp}/node_modules/is-number
+    grep -q "built with pnpm" ${pnpmPruneDevApp}/dist/index.html
+  '';
+
+  prune-dev-removes-dev-dependencies-from-yarn-output = outputCheck "prune-dev-removes-dev-dependencies-from-yarn-output" ''
+    test -d ${yarnApp}/node_modules/is-odd
+    test ! -e ${yarnPruneDevApp}/node_modules/is-odd
+    test -d ${yarnPruneDevApp}/node_modules/is-number
+    grep -q "built with yarn" ${yarnPruneDevApp}/dist/index.html
+  '';
+
+  prune-dev-removes-dev-dependencies-from-yarn-berry-output = outputCheck "prune-dev-removes-dev-dependencies-from-yarn-berry-output" ''
+    test -d ${yarnBerryApp}/node_modules/is-odd
+    test ! -e ${yarnBerryPruneDevApp}/node_modules/is-odd
+    test -d ${yarnBerryPruneDevApp}/node_modules/is-number
+    grep -q "built with yarn-berry" ${yarnBerryPruneDevApp}/dist/index.html
+  '';
+
+  prune-dev-does-not-change-the-dependency-cache =
+    check "prune-dev-does-not-change-the-dependency-cache"
+      (
+        npmPruneDevApp.passthru.deps.drvPath == npmApp.passthru.deps.drvPath
+        && pnpmPruneDevApp.passthru.deps.drvPath == pnpmApp.passthru.deps.drvPath
+        && yarnPruneDevApp.passthru.deps.drvPath == yarnApp.passthru.deps.drvPath
+        && yarnBerryPruneDevApp.passthru.deps.drvPath == yarnBerryApp.passthru.deps.drvPath
+      );
+
+  extra-attrs-npm-install-flags-reach-the-install = outputCheck "extra-attrs-npm-install-flags-reach-the-install" ''
+    test ! -e ${npmOmitDevApp}/node_modules/is-odd
+    test -d ${npmOmitDevApp}/node_modules/is-number
+    grep -q "built with npm" ${npmOmitDevApp}/dist/index.html
+  '';
+
+  install-hooks-run-around-the-default-install-phase = outputCheck "install-hooks-run-around-the-default-install-phase" ''
+    grep -qx preInstall ${installHooksApp}/pre-install-marker
+    grep -qx postInstall ${installHooksApp}/post-install-marker
+  '';
+
+  install-hooks-win-over-extra-attrs = outputCheck "install-hooks-win-over-extra-attrs" ''
+    grep -qx from-option ${installHooksPrecedenceApp}/install-source
+  '';
+
+  prune-dev-runs-after-pre-install = outputCheck "prune-dev-runs-after-pre-install" ''
+    test -d ${pruneDevAfterPreInstallApp}/node_modules/is-number
+    test ! -e ${pruneDevAfterPreInstallApp}/node_modules/is-odd
+  '';
+
+  prune-dev-applies-when-install-phase-calls-the-hooks = outputCheck "prune-dev-applies-when-install-phase-calls-the-hooks" ''
+    test -d ${pruneDevWithInstallPhaseApp}/node_modules/is-number
+    test ! -e ${pruneDevWithInstallPhaseApp}/node_modules/is-odd
   '';
 }

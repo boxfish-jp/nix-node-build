@@ -75,7 +75,7 @@ $ nix build
 ...
 error: hash mismatch in fixed-output derivation '...-node-deps.drv':
          specified: sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
-            got:    sha256-zsbwE7tVlaNIQatR0go555QPd8uX++6vVIdQ/pnNStA=
+            got:    sha256-aOCvF1XrI/iZBzc25nZ61y9nYOkaK3j1/vufrb2QlTk=
 ```
 
 `got:` の値を `depsHash` に貼り付けて再ビルドしてください。pnpm / yarn / Yarn Berry でも同じ手順です。
@@ -179,6 +179,77 @@ nix-node-build.lib.mkNodeApp {
 - `buildCommand = null` かつ `buildScript = null` のときはビルドコマンドを実行しません（`preBuild` / `postBuild` だけを実行することもできます）
 - `extraAttrs.buildPhase` を指定した場合は従来どおり `buildPhase` 全体を上書きします（`buildCommand` / `preBuild` / `postBuild` より優先されます）
 
+## インストール工程の前後に処理を挟む
+
+`preInstall` / `postInstall` は、`installPhase` の `runHook preInstall` / `runHook postInstall` で実行されるシェル行です。既定の `installPhase` は両方のフックを呼ぶので、そのまま指定できます。
+
+```nix
+nix-node-build.lib.mkNodeApp {
+  inherit pkgs src depsHash;
+
+  preInstall = "node scripts/generate.mjs";
+  postInstall = "rm -rf $out/docs";
+};
+```
+
+- `preInstall` は `$out` へのコピーの前、`postInstall` は後に実行されます
+- `extraAttrs.preInstall` / `extraAttrs.postInstall` にフォールバックします（`pnpmInstallFlags` などと同じ優先順位）
+- `installPhase` を差し替えた場合は、その中で `runHook preInstall` / `runHook postInstall` を呼べば同じように実行されます。呼ばなければ実行されません
+
+## dev 依存を出力から落とす
+
+既定の `installPhase` はビルド後のツリーを丸ごと `$out` にコピーするため、dev 依存も `$out/node_modules` に残ります。`pruneDev = true` は `preInstall` にパッケージマネージャごとの削除コマンドを追加します。
+
+```nix
+nix-node-build.lib.mkNodeApp {
+  inherit pkgs src depsHash;
+
+  pruneDev = true;
+};
+```
+
+| パッケージマネージャ | 実行されるコマンド |
+| --- | --- |
+| npm | `npm prune --omit=dev --no-save` |
+| pnpm | `pnpm prune --prod` |
+| yarn | `yarn install --production=true --frozen-lockfile --offline ...` |
+| Yarn Berry | `YARN_ENABLE_SCRIPTS=0 yarn workspaces focus --production` |
+
+- ビルドは dev 依存込みで実行し、`$out` へのコピーの前にだけ削除します。`tsc` / `vite` などのビルド時ツールはそのまま使えます
+- 削除するのは `node_modules` の中だけで、依存キャッシュ（`depsHash` で固定する FOD）は変わりません
+- `preInstall` を自分で書いた場合は、その後に `pruneDev` のコマンドが実行されます
+- `installPhase` を差し替えた場合は `runHook preInstall` を呼んでください（呼ばなければ prune も実行されません）
+
+### 依存の取得自体を減らす
+
+依存キャッシュはロックファイルから作られるため、npm / yarn / Yarn Berry では dev 依存も取得されます。`npm ci --omit=dev` のようなフラグはインストールにしか効かず、取得は減りません。
+
+pnpm だけは例外で、`pnpmInstallFlags` がフェッチとインストールの両方に渡るため、`--prod` を指定すると依存キャッシュから dev 依存が消えます。`pnpmWorkspaces` も同様に、対象 workspace の依存だけを取得します。
+
+```nix
+nix-node-build.lib.mkNodeApp {
+  inherit pkgs src;
+
+  pnpmInstallFlags = [ "--prod" ];
+};
+```
+
+`--prod` はインストールにも効くため、`pnpm run build` が dev 依存を必要とする場合はビルドが失敗します。取得は諦めて `pruneDev` を使ってください。
+
+peer 依存は npm と pnpm ではロックファイルに入るため同じように取得されます（yarn 1 / Yarn Berry は自動インストールしません）。
+
+### インストール時に dev 依存を展開しない
+
+npm でビルドが dev 依存を必要としない場合（成果物を同梱している、`buildScript = null` で依存だけ欲しい等）は、`extraAttrs.npmInstallFlags` で `npm ci` から dev 依存を外せます。npm 専用の逃げ道です。
+
+```nix
+nix-node-build.lib.mkNodeApp {
+  inherit pkgs src depsHash;
+
+  extraAttrs.npmInstallFlags = [ "--omit=dev" ];
+};
+```
+
 ## meta / env / mainProgram
 
 `meta` / `env` / `mainProgram` はトップレベル引数で指定します。
@@ -252,6 +323,9 @@ pnpmInstallFlags = [ "--ignore-scripts" ];
 | `buildCommand` | `null` | ビルド工程で実行するシェル行。指定すると `buildScript` より優先される（パッケージマネージャの `run` は前置されない） |
 | `preBuild` | `""` | ビルドの直前に実行するシェル行 |
 | `postBuild` | `""` | ビルドの直後に実行するシェル行 |
+| `preInstall` | `null`（実効 `""`） | `$out` へのコピー前に実行するシェル行。`extraAttrs.preInstall` にフォールバックする |
+| `postInstall` | `null`（実効 `""`） | `$out` へのコピー後に実行するシェル行。`extraAttrs.postInstall` にフォールバックする |
+| `pruneDev` | `false` | `preInstall` に dev 依存を削除するコマンドを追加する |
 | `installPhase` | ツリー全体を `$out` にコピー | インストール処理の差し替え |
 | `nativeBuildInputs` | `[ ]` | ビルド時に追加する依存 |
 | `buildInputs` | `[ ]` | ビルド時に追加する依存 |

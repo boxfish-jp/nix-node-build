@@ -8,5 +8,8 @@
   },
   "dependencies": {
     "is-number": "7.0.0"
+  },
+  "devDependencies": {
+    "is-odd": "3.0.1"
   }
 }

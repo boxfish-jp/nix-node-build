@@ -43,6 +43,9 @@ in
       buildCommand ? null,
       preBuild ? "",
       postBuild ? "",
+      preInstall ? null,
+      postInstall ? null,
+      pruneDev ? false,
       installPhase ? null,
       nativeBuildInputs ? [ ],
       buildInputs ? [ ],
@@ -64,6 +67,23 @@ in
           if pnpmWorkspaces != null then pnpmWorkspaces else extraAttrs.pnpmWorkspaces or [ ];
         pnpmInstallFlags =
           if pnpmInstallFlags != null then pnpmInstallFlags else extraAttrs.pnpmInstallFlags or [ ];
+      };
+
+      pruneDevCommands = {
+        npm = "npm prune --omit=dev --no-save";
+        pnpm = "pnpm prune --prod";
+        yarn = "yarn install --production=true --frozen-lockfile --offline --ignore-scripts --ignore-engines --ignore-platform --non-interactive";
+        yarn-berry = "YARN_ENABLE_SCRIPTS=0 yarn workspaces focus --production";
+      };
+
+      installHooks = {
+        preInstall = lib.concatStringsSep "\n" (
+          lib.filter (line: line != "") [
+            (if preInstall != null then preInstall else extraAttrs.preInstall or "")
+            (lib.optionalString pruneDev pruneDevCommands.${manager})
+          ]
+        );
+        postInstall = if postInstall != null then postInstall else extraAttrs.postInstall or "";
       };
 
       dependencyCache =
@@ -97,6 +117,8 @@ in
         "meta"
         "env"
         "passthru"
+        "preInstall"
+        "postInstall"
         "pnpmWorkspaces"
         "pnpmInstallFlags"
       ];
@@ -124,6 +146,7 @@ in
             ;
           src = source;
           installPhase = if installPhase != null then installPhase else defaultInstallPhase;
+          inherit (installHooks) preInstall postInstall;
           dontStrip = true;
           strictDeps = true;
           passthru = extraPassthru // {
